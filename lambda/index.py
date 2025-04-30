@@ -4,8 +4,80 @@ import os
 import boto3
 import re  # 正規表現モジュールをインポート
 from botocore.exceptions import ClientError
+import urllib.request # 追加
+import urllib.error # 追加
 
+# FastAPIサーバーのエンドポイントURL（追加）
+LLM_API_URL = "https://6a91-34-145-47-80.ngrok-free.app/generate"
 
+def lambda_handler(event, context):
+    try:
+        print("Received event:", json.dumps(event))
+        
+        # リクエストボディの解析
+        body = json.loads(event['body'])
+        message = body['message']
+        conversation_history = body.get('conversationHistory', [])
+
+        # ユーザーのメッセージだけ抽出（履歴から不要な情報を避ける）
+        prompt = "\n".join(
+                [f"{msg['role']}: {msg['content']}" for msg in conversation_history if msg['role'] in ('user', 'assistant')]
+                )
+        prompt += f"\nuser: {message}\nassistant:"
+
+        # LLM サーバーへ POST リクエスト送信
+        request_payload = {
+                "prompt": prompt,
+                "max_new_tokens": 128
+                }
+
+        req = urllib.request.Request(
+                LLM_API_URL,
+                data=json.dumps(request_payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+                )
+
+        with urllib.request.urlopen(req) as res:
+            response_body = json.loads(res.read().decode("utf-8"))
+            assistant_response = response_body.get("generated_text", "（応答が取得できませんでした）")
+
+        # 会話履歴に追加
+        conversation_history.append({"role": "user", "content": message})
+        conversation_history.append({"role": "assistant", "content": assistant_response})
+
+        return {
+                "statusCode": 200,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST"
+                    },
+                "body": json.dumps({
+                    "success": True,
+                    "response": assistant_response,
+                    "conversationHistory": conversation_history
+                    })
+                }
+
+    except Exception as error:
+        print("Error:", str(error))
+        return {
+                "statusCode": 500,
+                "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                "Access-Control-Allow-Methods": "OPTIONS,POST"
+                },
+                "body": json.dumps({
+                    "success": False,
+                    "error": str(error)
+                    })
+                }
+
+"""
 # Lambda コンテキストからリージョンを抽出する関数
 def extract_region_from_arn(arn):
     # ARN 形式: arn:aws:lambda:region:account-id:function:function-name
@@ -19,7 +91,8 @@ bedrock_client = None
 
 # モデルID
 MODEL_ID = os.environ.get("MODEL_ID", "us.amazon.nova-lite-v1:0")
-
+"""
+"""
 def lambda_handler(event, context):
     try:
         # コンテキストから実行リージョンを取得し、クライアントを初期化
@@ -138,3 +211,4 @@ def lambda_handler(event, context):
                 "error": str(error)
             })
         }
+"""
